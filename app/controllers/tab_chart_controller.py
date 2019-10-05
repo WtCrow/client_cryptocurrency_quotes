@@ -80,7 +80,7 @@ class TabChartController(QtCore.QObject):
 
         for i in range(0, 10):
             if not self._ws_manager.is_ws_connect:
-                time.sleep(1)
+                time.sleep(5)
             else:
                 break
         else:

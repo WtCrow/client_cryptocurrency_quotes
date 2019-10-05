@@ -312,7 +312,7 @@ class TabChartController(QtCore.QObject):
 
         IS_DEBUG = False
 
-        ws_address = 'ws://localhost:8080/api/v1/ws'
+        ws_address = 'wss://cryptocurrency-quotes.herokuapp.com/api/v1/ws'
 
         def __init__(self, loop):
             super().__init__()

@@ -1,0 +1,4 @@
+pyqtgraph==0.10.0
+numpy==1.16.2
+aiohttp==3.5.4
+PyQt5==5.13.1

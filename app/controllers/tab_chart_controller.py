@@ -1,7 +1,7 @@
+from app.models import TickerTableModel, DepthTableModel, StockPriceSeries, VolumeSeries
 from aiohttp import ClientSession, WebSocketError, ClientConnectorError
-from app.models import TickerTableModel, DepthTableModel
-from stock_chart import StockPriceSeries
 from PyQt5 import QtCore, QtWidgets
+from functools import partial
 import asyncio
 import json
 import time
@@ -20,17 +20,20 @@ class TabChartController(QtCore.QObject):
         super(TabChartController, self).__init__()
         self._view = view
 
-        # disable UI while not get listing_info
         self._view.exchanges_combobox.setEnabled(False)
         self._view.pairs_combobox.setEnabled(False)
         self._view.timeframe_combobox.setEnabled(False)
-        self._view.delete_ticker_button.setEnabled(False)
 
         # set models
         self._depth_model = DepthTableModel()
         self._view.depth_table.setModel(self._depth_model)
         self._tickers_model = TickerTableModel(['Pair', 'Bid', 'Ask'])
         self._view.tickers_table.setModel(self._tickers_model)
+        self._prices = StockPriceSeries()
+        self._volumes = VolumeSeries()
+        self._view.price_chart.addItem(self._prices)
+        self._view.volume_chart.addItem(self._volumes)
+        self.axis = self._view.volume_chart.getAxis('bottom')
 
         # Information about access symbols and time_frames will get after send message to server
         self._view.exchanges_combobox.addItems([self.WAITING_CONST, ])
@@ -41,6 +44,7 @@ class TabChartController(QtCore.QObject):
 
         # DoubleClick will start task chart-update and depth-update
         self._view.tickers_table.doubleClicked.connect(self._double_click_symbol_event)
+
         self._view.delete_ticker_button.pressed.connect(self._click_delete_symbol_button_event)
 
         self._view.autoscroll_checkbox.stateChanged.connect(self._state_change_scroll_check_box_event)
@@ -51,18 +55,24 @@ class TabChartController(QtCore.QObject):
         self._view.chart_type_combobox.activated.connect(self._change_type_chart_event)
         self._view.chart_type_combobox.addItems(['Candle', 'Bar', 'Line'])
 
+        # scaling charts
+        def scale_chart(chart, x_range_start, x_range_end):
+            chart.enableAutoRange(axis='y')
+            chart.setAutoVisible(y=True)
+        self.prc_scale_signal = partial(scale_chart, self._view.price_chart)
+        self.vlm_scale_signal = partial(scale_chart, self._view.volume_chart)
+        self._view.price_chart.sigXRangeChanged.connect(self.prc_scale_signal)
+        self._view.volume_chart.sigXRangeChanged.connect(self.vlm_scale_signal)
+
         # save event loop link for start thread_save async methods
         self._loop = asyncio.new_event_loop()
         self._ws_manager = TabChartController.WSManager(self._loop)
-
         # ...connect slot to signal...
         self._ws_manager.update_ticker_signal.connect(self._update_ticker_slot)
         self._ws_manager.update_depth_signal.connect(self._update_depth_slot)
         self._ws_manager.update_candles_signal.connect(self._update_chart_slot)
         self._ws_manager.update_listing_signal.connect(self._update_listing_slot)
         self._ws_manager.show_error_signal.connect(self._print_error_slot)
-
-        # ...and start
         self._ws_manager.start()
 
         # variables to track changes
@@ -71,6 +81,8 @@ class TabChartController(QtCore.QObject):
         self._chart_exchange = None
         self._chart_pair = None
         self._chart_time_frame = None
+
+        self._is_auto_scroll = True
 
         # {exchange: [[time_frames], [pairs]], ...}
         self._listing_info = dict()
@@ -85,16 +97,21 @@ class TabChartController(QtCore.QObject):
                 break
         else:
             QtWidgets.QMessageBox.critical(None, 'Error', 'Not connection to server')
-            quit(-1)
+            quit(1)
 
         self._send_sub_message(data_id='listing_info')
 
     # Events
     def _state_change_scroll_check_box_event(self, state):
-        self._view.price_chart.set_enable_auto_scroll(state)
+        self._is_auto_scroll = state
 
     def _state_change_scaled_check_box_event(self, state):
-        self._view.price_chart.set_enable_auto_scaled_oy(state)
+        if state:
+            self._view.price_chart.sigXRangeChanged.connect(self.prc_scale_signal)
+            self._view.volume_chart.sigXRangeChanged.connect(self.vlm_scale_signal)
+        else:
+            self._view.price_chart.sigXRangeChanged.disconnect(self.prc_scale_signal)
+            self._view.volume_chart.sigXRangeChanged.disconnect(self.vlm_scale_signal)
 
     def _change_exchange_event(self, index):
         """Replace access pairs list or break if selected old exchange"""
@@ -121,23 +138,16 @@ class TabChartController(QtCore.QObject):
         self._send_unsub_message(data_id)
 
         self._chart_time_frame = new_time_frame
-        self._view.price_chart.set_data([])
-        self._view.volume_chart.set_data([])
+        self._prices.set_data([])
+        self._volumes.set_data([])
 
         data_id = '.'.join([TabChartController.CANDLES_TYPE, self._chart_exchange, self._chart_pair,
                             self._chart_time_frame])
         self._send_sub_message(data_id)
 
     def _change_type_chart_event(self, index):
-        type_chart = ''
-        if index == 0:
-            type_chart = StockPriceSeries.CANDLES_TYPE
-        elif index == 1:
-            type_chart = StockPriceSeries.BAR_TYPE
-        elif index == 2:
-            type_chart = StockPriceSeries.LINE_TYPE
-
-        self._view.price_chart.change_type_chart(type_chart)
+        chart_types = [StockPriceSeries.CANDLES_TYPE, StockPriceSeries.BAR_TYPE, StockPriceSeries.LINE_TYPE]
+        self._prices.set_chart_type(chart_types[index])
 
     def _select_new_symbol_event(self, index):
         """Subscribe to new pair ticker and add empty cells in table"""
@@ -157,7 +167,7 @@ class TabChartController(QtCore.QObject):
         self._tickers_model.update([pair_and_exchange, '-', '-'])
 
     def _click_delete_symbol_button_event(self):
-        """Unsub to ticker and check does it deleted pair pair at chart. if yes, then clear chart"""
+        """Unsub to ticker and check does it deleted pair pair on chart. if chart updating by this pair, then clear"""
         model = self._view.tickers_table.selectionModel()
         if not model.hasSelection():
             return
@@ -186,11 +196,10 @@ class TabChartController(QtCore.QObject):
         """Select new symbol for show chart and depth"""
         exchange_and_pair = self._view.tickers_table.model().index(index.row(), 0).data()
         new_exchange, new_pair = exchange_and_pair.split(' | ')
-        # if select pairs, that does it current pairs for chart, then return
         if self._chart_exchange == new_exchange and self._chart_pair == new_pair:
             return
 
-        # if exist task, that listener chart and depth, then unsub
+        # if task, that listener chart and depth, exist then unsub
         if self._chart_exchange and self._chart_pair:
             data_id_chart = '.'.join([TabChartController.CANDLES_TYPE, self._chart_exchange, self._chart_pair,
                                       self._chart_time_frame])
@@ -200,12 +209,11 @@ class TabChartController(QtCore.QObject):
             self._send_unsub_message(data_id_depth)
 
         self._clear_chart_info()
-
         self._view.timeframe_combobox.addItems(self._listing_info[new_exchange][0])
         time_frame = self._view.timeframe_combobox.currentText()
         self._view.price_chart.setTitle(f'{new_exchange} | {new_pair}')
 
-        # sub at new data
+        # sub on new data
         self._chart_exchange, self._chart_pair, self._chart_time_frame = new_exchange, new_pair, time_frame
         data_id = '.'.join([TabChartController.CANDLES_TYPE, new_exchange, new_pair, self._chart_time_frame])
         self._send_sub_message(data_id)
@@ -218,25 +226,37 @@ class TabChartController(QtCore.QObject):
         self._chart_time_frame = None
         self._chart_exchange = None
 
-        self._view.price_chart.set_data([])
-        self._view.volume_chart.set_data([])
+        self._prices.set_data([])
+        self._volumes.set_data([])
+        self.axis.set_data([])
         self._depth_model.clear()
         self._view.price_chart.setTitle('')
         self._view.timeframe_combobox.clear()
 
+    def _scroll(self):
+        vb = self._view.price_chart.getViewBox()
+        view_range = vb.viewRange()
+
+        # Get x coord left edge views area
+        to_x = len(self._prices) - (view_range[0][1] - view_range[0][0])
+        # Get x coord right edge views area
+        do_x = len(self._prices)
+
+        vb.setRange(xRange=[to_x, do_x], padding=0)
+
     # Slots
     def _update_depth_slot(self, data):
         data_id = data['data_id']
-        data_id_arr = data_id.split('.')
-        exchange, pair = data_id_arr[2], data_id_arr[3]
+        fragment_id = data_id.split('.')
+        exchange, pair = fragment_id[2], fragment_id[3]
 
         if self._chart_exchange == exchange and self._chart_pair == pair:
             self._depth_model.set_data(data['data'][0], data['data'][1])
 
     def _update_ticker_slot(self, data):
         data_id = data['data_id']
-        data_id_arr = data_id.split('.')
-        exchange, pair = data_id_arr[2], data_id_arr[3]
+        fragment_id = data_id.split('.')
+        exchange, pair = fragment_id[2], fragment_id[3]
 
         if self._tickers_model.contain(f'{exchange} | {pair}'):
             data = (f'{exchange} | {pair}', data['data'][0], data['data'][1])
@@ -244,23 +264,28 @@ class TabChartController(QtCore.QObject):
 
     def _update_chart_slot(self, data):
         data_id = data['data_id']
-        data_id_arr = data_id.split('.')
-        exchange, pair, time_frame = data_id_arr[2], data_id_arr[3], data_id_arr[4]
+        fragment_id = data_id.split('.')
+        exchange, pair, time_frame = fragment_id[2], fragment_id[3], fragment_id[4]
 
         if self._chart_exchange != exchange or self._chart_pair != pair or self._chart_time_frame != time_frame:
             return
 
-        if data_id_arr[0] == 'update':
+        if fragment_id[0] == 'update':
             ohlc = (float(data['data'][0]), float(data['data'][1]), float(data['data'][2]), float(data['data'][3]),
                     data['data'][5])
             volume = (float(data['data'][4]), data['data'][5])
-            self._view.price_chart.append(ohlc)
-            self._view.volume_chart.append(volume)
-        elif data_id_arr[0] == 'starting':
+            self._prices.append_or_replace(ohlc)
+            self._volumes.append_or_replace(volume)
+            self.axis.append(data['data'][5])
+            if self._is_auto_scroll:
+                self._scroll()
+        elif fragment_id[0] == 'starting':
             ohlc = [(float(item[0]), float(item[1]), float(item[2]), float(item[3]), item[5]) for item in data['data']]
             volume = [(float(item[4]), item[5]) for item in data['data']]
-            self._view.price_chart.set_data(ohlc)
-            self._view.volume_chart.set_data(volume)
+            times = [item[5] for item in data['data']]
+            self._prices.set_data(ohlc)
+            self._volumes.set_data(volume)
+            self.axis.set_data(times)
 
     def _update_listing_slot(self, data):
         self._listing_info = data['data']
@@ -285,7 +310,6 @@ class TabChartController(QtCore.QObject):
             return
 
         fragment_id = message['data_id'].split('.')
-
         exchange, pair = fragment_id[2], fragment_id[3]
         if self._tickers_model.contain(f'{exchange} | {pair}'):
             self._tickers_model.removeRow(message['data_id'])
@@ -295,8 +319,7 @@ class TabChartController(QtCore.QObject):
 
     # WS
     def _send_sub_message(self, data_id):
-        asyncio.run_coroutine_threadsafe(self._ws_manager.async_send_message(action='sub', data_id=data_id),
-                                         self._loop)
+        asyncio.run_coroutine_threadsafe(self._ws_manager.async_send_message(action='sub', data_id=data_id), self._loop)
 
     def _send_unsub_message(self, data_id):
         asyncio.run_coroutine_threadsafe(self._ws_manager.async_send_message(action='unsub', data_id=data_id),
@@ -312,7 +335,7 @@ class TabChartController(QtCore.QObject):
 
         IS_DEBUG = False
 
-        ws_address = 'ws://localhost:8080/api/v1/ws'
+        ws_address = 'ws://0.0.0.0:8080/api/v1/ws'
 
         def __init__(self, loop):
             super().__init__()
@@ -327,7 +350,7 @@ class TabChartController(QtCore.QObject):
 
         async def async_send_message(self, action, data_id):
             if not self.is_ws_connect:
-                raise WebSocketError(code=-1, message='WS is not connection')
+                raise WebSocketError(code=1, message='WS is not connection')
 
             await self.ws.send_json(
                 dict(
@@ -340,24 +363,18 @@ class TabChartController(QtCore.QObject):
             try:
                 async with ClientSession() as session:
                     async with session.ws_connect(self.ws_address) as self.ws:
-
                         self.is_ws_connect = True
 
                         while True:
                             response = await self.ws.receive()
+                            response = json.loads(response.data)
 
                             if TabChartController.WSManager.IS_DEBUG:
                                 print(response)
 
-                            response = json.loads(response.data)
-
-                            if 'error' in response.keys():
+                            if 'error' in response:
                                 self.show_error_signal.emit(response)
-
-                            if response['data_id'] == TabChartController.LISTING_TYPE:
-                                response['data'] = json.loads(response['data'])
-
-                            if response['data_id'] == TabChartController.LISTING_TYPE:
+                            elif response['data_id'] == TabChartController.LISTING_TYPE:
                                 self.update_listing_signal.emit(response)
                             else:
                                 data_type = response['data_id'].split('.')[1]

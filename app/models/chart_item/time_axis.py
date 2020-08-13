@@ -7,7 +7,7 @@ class CustomAxisItem(pg.AxisItem):
 
     def __init__(self, data_axis=None, time_mask='%Y-%m-%d %H:%M', *args, **kwargs):
         pg.AxisItem.__init__(self, *args, **kwargs)
-        self._seq_data = data_axis if data_axis else []  # array contain str for axis
+        self._seq_data = data_axis if data_axis else []
         self._mask = time_mask
 
     def append(self, data_axis_list):
@@ -28,3 +28,6 @@ class CustomAxisItem(pg.AxisItem):
                 item = str(datetime.datetime.fromtimestamp(item).strftime(self._mask))
             set_for_show.append(item)
         return set_for_show
+
+    def __len__(self):
+        return len(self._data)

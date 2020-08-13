@@ -1,5 +1,6 @@
 from app.controllers.tab_chart_controller import TabChartController
-from stock_chart import PriceStockPlot, VolumePlot
+from app.models import CustomAxisItem
+from pyqtgraph import PlotWidget
 from PyQt5 import QtWidgets, Qt
 
 
@@ -19,11 +20,9 @@ class TabChartView(QtWidgets.QWidget):
         # list symbols area
         label_exchange = QtWidgets.QLabel('Exchanges')
         self.exchanges_combobox = QtWidgets.QComboBox()
-        self.exchanges_combobox.setEditable(True)
         self.exchanges_combobox.setCurrentIndex(0)
         label_symbols = QtWidgets.QLabel('Pairs')
         self.pairs_combobox = QtWidgets.QComboBox()
-        self.pairs_combobox.setEditable(True)
         self.tickers_table = QtWidgets.QTableView()
         self.tickers_table.setSelectionBehavior(Qt.QAbstractItemView.SelectRows)
         self.tickers_table.verticalHeader().close()
@@ -63,13 +62,23 @@ class TabChartView(QtWidgets.QWidget):
         self.panel_layout.addWidget(self.chart_type_combobox)
         vertical_layout_2.addLayout(self.panel_layout, 1)
 
-        # chart area
-        self.price_chart = PriceStockPlot()
+        self.price_chart = PlotWidget()
         self.price_chart.setBackground("w")
         self.price_chart.hideButtons()
-        self.volume_chart = VolumePlot()
-        self.volume_chart.setXLink(self.price_chart)
+        self.price_chart.showGrid(True, True)
+        self.price_chart.getPlotItem().showAxis('right')
+        self.price_chart.getAxis('bottom').setStyle(showValues=False)
+        self.price_chart.getAxis('left').setStyle(showValues=False)
+
+        time_axis = CustomAxisItem(orientation='bottom')
+        self.volume_chart = PlotWidget(axisItems={'bottom': time_axis})
         self.volume_chart.setBackground("w")
+        self.volume_chart.hideButtons()
+        self.volume_chart.showGrid(True, True)
+        self.volume_chart.getPlotItem().showAxis('right')
+        self.volume_chart.getAxis('left').setStyle(showValues=False)
+
+        self.price_chart.setXLink(self.volume_chart)
 
         vertical_layout_2.addWidget(self.price_chart, 4)
         vertical_layout_2.addWidget(self.volume_chart, 1)

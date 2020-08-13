@@ -3,15 +3,17 @@ from PyQt5.QtCore import Qt
 
 
 class DepthTableModel(QtCore.QAbstractTableModel):
-    """
-    Модель данных стакана
-    список предложений на продажу (красный фон) и на покупку (зеленый фон)
-    rowCount определяет количество строк, которые следует пройти
-    columnCount определяет количество колонок, которые следует пройти
-    data определяет отображение данных
-    headerData определяет отображение заголовков
-    set_data установить новые данные
-    clear отчистить таблицу
+    """Depth table model
+    list asks prices. One row contain price sellers and quantity on this price. Red color.
+    list bids prices. One row contain price buyers and quantity on this price. Green color.
+
+    rowCount - count rows
+    columnCount - count columns
+    data - table for display.
+        Format: [[buyers], [sellers]]. buyers | sellers : [[price, quantity], [price, quantity], ...]
+    headerData - display settings
+    set_data - set new data
+    clear - clear all table
     """
 
     def __init__(self, parent=None):
@@ -25,18 +27,14 @@ class DepthTableModel(QtCore.QAbstractTableModel):
         self.layoutChanged.emit()
 
     def clear(self):
-        self._source['buy'] = []
-        self._source['sell'] = []
+        self._source['buy'].clear()
+        self._source['sell'].clear()
         self.layoutChanged.emit()
 
     def rowCount(self, n):
-        # Вывод в таблицу идет единым списком, так что суммируем длины
-        try:
-            if not self._source:
-                return 0
-            return len(self._source['sell']) + len(self._source['buy'])
-        except IndexError or KeyError:
+        if not self._source:
             return 0
+        return len(self._source['sell']) + len(self._source['buy'])
 
     def columnCount(self, n):
         return len(self._headers)
@@ -45,11 +43,11 @@ class DepthTableModel(QtCore.QAbstractTableModel):
         if not index:
             return False
         if role == Qt.DisplayRole:
-            # пока есть элементы в sell, вставляем их
+            # sell
             if index.row() < len(self._source['sell']):
                 return self._source['sell'][index.row()][index.column()]
             else:
-                # sell закончился, получаем необходимый индекс в списке buy
+                # buy
                 ind = index.row() - len(self._source['sell'])
                 return self._source['buy'][ind][index.column()]
         elif role == Qt.BackgroundRole:

@@ -3,16 +3,7 @@ from PyQt5 import QtCore
 
 
 class TickerTableModel(QtCore.QAbstractTableModel):
-    """
-    Модель для таблици с кастомным заранее определенным header'ом
-    rowCount определяет количество строк, которые следует пройти
-    columnCount определяет количество колонок, которые следует пройти
-    data определяет отображение данных
-    headerData определяет отображение заголовков
-    removeRow удалить строку
-    append добавить новое или заменить старое значение. (ориентируется по первой ячейке)
-    update_cell обновит ячейки indexes_cells. (ориентируется по первой ячейке)
-    """
+    """Model for ticker table"""
 
     def __init__(self, header, parent=None):
         super(TickerTableModel, self).__init__(parent)

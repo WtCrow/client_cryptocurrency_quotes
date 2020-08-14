@@ -120,6 +120,7 @@ class TabChartController(QtCore.QObject):
         self._chart_time_frame = None
 
         self._is_auto_scroll = True
+        self.is_auto_scaled_oy = True
 
         # {exchange: [[time_frames], [pairs]], ...}
         self._listing_info = dict()
@@ -165,6 +166,7 @@ class TabChartController(QtCore.QObject):
         self._is_auto_scroll = state
 
     def _state_change_scaled_check_box_event(self, state):
+        self.is_auto_scaled_oy = state
         if state:
             self._view.price_chart.sigXRangeChanged.connect(self.prc_scale_signal)
             self._view.volume_chart.sigXRangeChanged.connect(self.vlm_scale_signal)
@@ -302,6 +304,14 @@ class TabChartController(QtCore.QObject):
         do_x = len(self._prices)
 
         vb.setRange(xRange=[to_x, do_x], padding=0)
+
+        # if auto-scale off, set center y-coord on close price
+        if not self.is_auto_scaled_oy:
+            last_close_price = self._prices[-1][3]
+            len_y_view_range = view_range[1][1] - view_range[1][0]
+            to_y = last_close_price - len_y_view_range // 2
+            do_y = last_close_price + len_y_view_range // 2
+            vb.setRange(yRange=[to_y, do_y], padding=0)
 
     # Slots
     def _update_depth_slot(self, data):

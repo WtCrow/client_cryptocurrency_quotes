@@ -1,9 +1,8 @@
-PyQt5 client for server from this repo: https://github.com/WtCrow/cryptocurrency_quotes
+This is program work with this site: https://cryptocurrency-quotes.herokuapp.com
 
-You can use client for the running server in branch heroku_client. This client work with site from this url: https://cryptocurrency-quotes.herokuapp.com
+For install and start this app, you need:
 
-For start client from branch master, you need:
-1) Start server from this repo: https://github.com/WtCrow/cryptocurrency_quotes
+1) Install python3 and pip3
 2) Open terminal and enter `cd <path/to/client>`
 3) Enter `pip install .`
 4) Start main.py

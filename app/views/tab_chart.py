@@ -73,6 +73,7 @@ class TabChartView(QtWidgets.QWidget):
         self.price_chart.getPlotItem().showAxis('right')
         self.price_chart.getAxis('bottom').setStyle(showValues=False)
         self.price_chart.getAxis('left').setStyle(showValues=False)
+        self.price_chart.getViewBox().setLimits(yMin=-1, xMin=-1)
 
         time_axis = CustomAxisItem(orientation='bottom')
         self.volume_chart = PlotWidget(axisItems={'bottom': time_axis})
@@ -81,6 +82,7 @@ class TabChartView(QtWidgets.QWidget):
         self.volume_chart.showGrid(True, True)
         self.volume_chart.getPlotItem().showAxis('right')
         self.volume_chart.getAxis('left').setStyle(showValues=False)
+        self.volume_chart.getViewBox().setLimits(yMin=-1, xMin=-1)
 
         self.price_chart.setXLink(self.volume_chart)
 

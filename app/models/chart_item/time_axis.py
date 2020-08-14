@@ -29,5 +29,8 @@ class CustomAxisItem(pg.AxisItem):
             set_for_show.append(item)
         return set_for_show
 
+    def __getitem__(self, item):
+        return self._seq_data[item]
+
     def __len__(self):
-        return len(self._data)
+        return len(self._seq_data)

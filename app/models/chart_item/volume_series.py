@@ -79,5 +79,8 @@ class VolumeSeries(pg.GraphicsObject):
 
         return minimum, maximum
 
+    def __getitem__(self, item):
+        return self._data[item]
+
     def __len__(self):
         return len(self._data)

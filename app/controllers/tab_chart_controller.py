@@ -2,6 +2,7 @@ from app.models import TickerTableModel, DepthTableModel, StockPriceSeries, Volu
 from aiohttp import ClientSession, WebSocketError, ClientConnectorError
 from PyQt5 import QtCore, QtWidgets
 from functools import partial
+import pyqtgraph as pg
 import asyncio
 import json
 import time
@@ -47,6 +48,42 @@ class TabChartController(QtCore.QObject):
 
         self._view.delete_ticker_button.pressed.connect(self._click_delete_symbol_button_event)
 
+        # Cross hair variables (vertical lines for each chart and horizontal line for all charts)
+        self.v_line_prc = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('b', width=2))
+        self.v_line_vlm = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('b', width=2))
+        self.h_line = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen('b', width=2))
+        self.chart_with_h_line = None
+
+        # horizontal cross hair line move
+        def mouse_move_h_line(chart, evt):
+            mouse_point = chart.getViewBox().mapSceneToView(evt)
+            if self.h_line not in chart.scene().items():
+                if self.chart_with_h_line:
+                    self.chart_with_h_line.removeItem(self.h_line)
+                self.chart_with_h_line = chart
+                chart.addItem(self.h_line)
+            self.h_line.setPos(mouse_point.y())
+        self.prc_h_line_move_signal = partial(mouse_move_h_line, self._view.price_chart)
+        self.vlm_h_line_move_signal = partial(mouse_move_h_line, self._view.volume_chart)
+
+        self._view.price_chart.scene().sigMouseMoved.connect(self.prc_h_line_move_signal)
+        self._view.volume_chart.scene().sigMouseMoved.connect(self.vlm_h_line_move_signal)
+
+        # vertical cross hair lines move
+        def mouse_move_v_line(evt):
+            if self._view.price_chart.sceneBoundingRect().contains(evt):
+                mouse_point = self._view.price_chart.getViewBox().mapSceneToView(evt)
+                self.v_line_prc.setPos(mouse_point.x())
+                self.v_line_vlm.setPos(mouse_point.x())
+        self.v_line_move_signal = mouse_move_v_line
+        self._view.price_chart.addItem(self.v_line_prc)
+        self._view.volume_chart.addItem(self.v_line_vlm)
+        self._view.price_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+        self._view.volume_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+
+        self._view.cross_hair_checkbox.stateChanged.connect(self._state_change_crosshair)
+
+        # checkboxes auto-scroll, auto-scale
         self._view.autoscroll_checkbox.stateChanged.connect(self._state_change_scroll_check_box_event)
         self._view.autoscale_checkbox.stateChanged.connect(self._state_change_scaled_check_box_event)
 
@@ -83,6 +120,7 @@ class TabChartController(QtCore.QObject):
         self._chart_time_frame = None
 
         self._is_auto_scroll = True
+        self.is_auto_scaled_oy = True
 
         # {exchange: [[time_frames], [pairs]], ...}
         self._listing_info = dict()
@@ -102,10 +140,33 @@ class TabChartController(QtCore.QObject):
         self._send_sub_message(data_id='listing_info')
 
     # Events
+    def _state_change_crosshair(self, state):
+        if state:
+            self._view.price_chart.scene().sigMouseMoved.connect(self.prc_h_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.connect(self.vlm_h_line_move_signal)
+
+            self._view.price_chart.addItem(self.v_line_prc)
+            self._view.volume_chart.addItem(self.v_line_vlm)
+
+            self._view.price_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+        else:
+            if self.chart_with_h_line:
+                self.chart_with_h_line.removeItem(self.h_line)
+            self._view.price_chart.scene().sigMouseMoved.disconnect(self.prc_h_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.disconnect(self.vlm_h_line_move_signal)
+
+            self._view.price_chart.removeItem(self.v_line_prc)
+            self._view.volume_chart.removeItem(self.v_line_vlm)
+
+            self._view.price_chart.scene().sigMouseMoved.disconnect(self.v_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.disconnect(self.v_line_move_signal)
+
     def _state_change_scroll_check_box_event(self, state):
         self._is_auto_scroll = state
 
     def _state_change_scaled_check_box_event(self, state):
+        self.is_auto_scaled_oy = state
         if state:
             self._view.price_chart.sigXRangeChanged.connect(self.prc_scale_signal)
             self._view.volume_chart.sigXRangeChanged.connect(self.vlm_scale_signal)
@@ -243,6 +304,14 @@ class TabChartController(QtCore.QObject):
         do_x = len(self._prices)
 
         vb.setRange(xRange=[to_x, do_x], padding=0)
+
+        # if auto-scale off, set center y-coord on close price
+        if not self.is_auto_scaled_oy:
+            last_close_price = self._prices[-1][3]
+            len_y_view_range = view_range[1][1] - view_range[1][0]
+            to_y = last_close_price - len_y_view_range // 2
+            do_y = last_close_price + len_y_view_range // 2
+            vb.setRange(yRange=[to_y, do_y], padding=0)
 
     # Slots
     def _update_depth_slot(self, data):

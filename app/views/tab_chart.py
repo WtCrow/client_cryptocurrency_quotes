@@ -48,6 +48,10 @@ class TabChartView(QtWidgets.QWidget):
         # tools for chart area
         vertical_layout_2 = QtWidgets.QVBoxLayout()
         self.panel_layout = QtWidgets.QHBoxLayout()
+        self.cross_hair_checkbox = QtWidgets.QCheckBox()
+        self.cross_hair_checkbox.setChecked(True)
+        self.cross_hair_checkbox.setText("Crosshair")
+        self.panel_layout.addWidget(self.cross_hair_checkbox)
         self.autoscroll_checkbox = QtWidgets.QCheckBox()
         self.autoscroll_checkbox.setChecked(True)
         self.autoscroll_checkbox.setText("Auto-scroll")
@@ -69,6 +73,7 @@ class TabChartView(QtWidgets.QWidget):
         self.price_chart.getPlotItem().showAxis('right')
         self.price_chart.getAxis('bottom').setStyle(showValues=False)
         self.price_chart.getAxis('left').setStyle(showValues=False)
+        self.price_chart.getViewBox().setLimits(yMin=-1, xMin=-1)
 
         time_axis = CustomAxisItem(orientation='bottom')
         self.volume_chart = PlotWidget(axisItems={'bottom': time_axis})
@@ -77,6 +82,7 @@ class TabChartView(QtWidgets.QWidget):
         self.volume_chart.showGrid(True, True)
         self.volume_chart.getPlotItem().showAxis('right')
         self.volume_chart.getAxis('left').setStyle(showValues=False)
+        self.volume_chart.getViewBox().setLimits(yMin=-1, xMin=-1)
 
         self.price_chart.setXLink(self.volume_chart)
 

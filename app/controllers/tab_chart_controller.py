@@ -2,6 +2,7 @@ from app.models import TickerTableModel, DepthTableModel, StockPriceSeries, Volu
 from aiohttp import ClientSession, WebSocketError, ClientConnectorError
 from PyQt5 import QtCore, QtWidgets
 from functools import partial
+import pyqtgraph as pg
 import asyncio
 import json
 import time
@@ -47,6 +48,42 @@ class TabChartController(QtCore.QObject):
 
         self._view.delete_ticker_button.pressed.connect(self._click_delete_symbol_button_event)
 
+        # Cross hair variables (vertical lines for each chart and horizontal line for all charts)
+        self.v_line_prc = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('b', width=2))
+        self.v_line_vlm = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('b', width=2))
+        self.h_line = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen('b', width=2))
+        self.chart_with_h_line = None
+
+        # horizontal cross hair line move
+        def mouse_move_h_line(chart, evt):
+            mouse_point = chart.getViewBox().mapSceneToView(evt)
+            if self.h_line not in chart.scene().items():
+                if self.chart_with_h_line:
+                    self.chart_with_h_line.removeItem(self.h_line)
+                self.chart_with_h_line = chart
+                chart.addItem(self.h_line)
+            self.h_line.setPos(mouse_point.y())
+        self.prc_h_line_move_signal = partial(mouse_move_h_line, self._view.price_chart)
+        self.vlm_h_line_move_signal = partial(mouse_move_h_line, self._view.volume_chart)
+
+        self._view.price_chart.scene().sigMouseMoved.connect(self.prc_h_line_move_signal)
+        self._view.volume_chart.scene().sigMouseMoved.connect(self.vlm_h_line_move_signal)
+
+        # vertical cross hair lines move
+        def mouse_move_v_line(evt):
+            if self._view.price_chart.sceneBoundingRect().contains(evt):
+                mouse_point = self._view.price_chart.getViewBox().mapSceneToView(evt)
+                self.v_line_prc.setPos(mouse_point.x())
+                self.v_line_vlm.setPos(mouse_point.x())
+        self.v_line_move_signal = mouse_move_v_line
+        self._view.price_chart.addItem(self.v_line_prc)
+        self._view.volume_chart.addItem(self.v_line_vlm)
+        self._view.price_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+        self._view.volume_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+
+        self._view.cross_hair_checkbox.stateChanged.connect(self._state_change_crosshair)
+
+        # checkboxes auto-scroll, auto-scale
         self._view.autoscroll_checkbox.stateChanged.connect(self._state_change_scroll_check_box_event)
         self._view.autoscale_checkbox.stateChanged.connect(self._state_change_scaled_check_box_event)
 
@@ -102,6 +139,28 @@ class TabChartController(QtCore.QObject):
         self._send_sub_message(data_id='listing_info')
 
     # Events
+    def _state_change_crosshair(self, state):
+        if state:
+            self._view.price_chart.scene().sigMouseMoved.connect(self.prc_h_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.connect(self.vlm_h_line_move_signal)
+
+            self._view.price_chart.addItem(self.v_line_prc)
+            self._view.volume_chart.addItem(self.v_line_vlm)
+
+            self._view.price_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.connect(self.v_line_move_signal)
+        else:
+            if self.chart_with_h_line:
+                self.chart_with_h_line.removeItem(self.h_line)
+            self._view.price_chart.scene().sigMouseMoved.disconnect(self.prc_h_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.disconnect(self.vlm_h_line_move_signal)
+
+            self._view.price_chart.removeItem(self.v_line_prc)
+            self._view.volume_chart.removeItem(self.v_line_vlm)
+
+            self._view.price_chart.scene().sigMouseMoved.disconnect(self.v_line_move_signal)
+            self._view.volume_chart.scene().sigMouseMoved.disconnect(self.v_line_move_signal)
+
     def _state_change_scroll_check_box_event(self, state):
         self._is_auto_scroll = state
 

@@ -48,6 +48,10 @@ class TabChartView(QtWidgets.QWidget):
         # tools for chart area
         vertical_layout_2 = QtWidgets.QVBoxLayout()
         self.panel_layout = QtWidgets.QHBoxLayout()
+        self.cross_hair_checkbox = QtWidgets.QCheckBox()
+        self.cross_hair_checkbox.setChecked(True)
+        self.cross_hair_checkbox.setText("Crosshair")
+        self.panel_layout.addWidget(self.cross_hair_checkbox)
         self.autoscroll_checkbox = QtWidgets.QCheckBox()
         self.autoscroll_checkbox.setChecked(True)
         self.autoscroll_checkbox.setText("Auto-scroll")

@@ -4,7 +4,7 @@ from setuptools import setup
 setup(
     name='cryptocurrency-quotes',
     version='1.0',
-    packages=['app', 'app.views', 'app.models', 'app.controllers'],
+    packages=['app', 'app.views', 'app.models', 'app.controllers', 'app.models.chart_item'],
     license='',
     author='Babenko Denis',
     author_email='babenko.denis3009@gmail.com',
